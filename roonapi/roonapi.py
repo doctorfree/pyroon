@@ -378,7 +378,8 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
             opt_data = {"zone_or_output_id": zone_or_output_id}
         else:
             opt_data = None
-        self._roonsocket.subscribe(SERVICE_TRANSPORT, "queue", callback, opt_data)
+        if self._roonsocket is not None:
+            self._roonsocket.subscribe(SERVICE_TRANSPORT, "queue", callback, opt_data)
 
     def browse_browse(self, opts):
         """
@@ -413,7 +414,12 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
             "pop_all": True,
         }
 
-        total_count = self.browse_browse(opts)["list"]["count"]
+        result = self.browse_browse(opts)
+        if result is not None:
+            total_count = result["list"]["count"]
+        else:
+            total_count = 0
+
         del opts["pop_all"]
 
         load_opts = {
@@ -432,7 +438,11 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
 
             LOGGER.debug("Looking for %s", element)
             while searched < total_count and found is None:
-                items = self.browse_load(load_opts)["items"]
+                load_result = self.browse_load(load_opts)
+                if load_result is not None:
+                    items = load_result["items"]
+                else:
+                    items = []
 
                 for item in items:
                     searched += 1
@@ -449,20 +459,33 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
                 )
                 return None
 
-            opts["item_key"] = found["item_key"]
-            load_opts["item_key"] = found["item_key"]
+            if found is not None:
+                opts["item_key"] = found["item_key"]
+                load_opts["item_key"] = found["item_key"]
 
-            total_count = self.browse_browse(opts)["list"]["count"]
+            result = self.browse_browse(opts)
+            if result is not None:
+                total_count = result["list"]["count"]
+            else:
+                total_count = 0
 
             load_opts["offset"] = 0
-            items = self.browse_load(load_opts)["items"]
+            load_result = self.browse_load(load_opts)
+            if load_result is not None:
+                items = load_result["items"]
+            else:
+                items = []
 
         LOGGER.debug("Searching for %s", searchterm)
         load_opts["offset"] = 0
         searched = 0
         matched = []
         while searched < total_count:
-            items = self.browse_load(load_opts)["items"]
+            load_result = self.browse_load(load_opts)
+            if load_result is not None:
+                items = load_result["items"]
+            else:
+                items = []
 
             if searchterm == "__all__":
                 for item in items:
@@ -498,7 +521,11 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
             "pop_all": True,
         }
 
-        total_count = self.browse_browse(opts)["list"]["count"]
+        result = self.browse_browse(opts)
+        if result is not None:
+            total_count = result["list"]["count"]
+        else:
+            total_count = 0
         del opts["pop_all"]
 
         load_opts = {
@@ -515,7 +542,11 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
 
             LOGGER.debug("Looking for %s", element)
             while searched < total_count and found is None:
-                items = self.browse_load(load_opts)["items"]
+                load_result = self.browse_load(load_opts)
+                if load_result is not None:
+                    items = load_result["items"]
+                else:
+                    items = []
 
                 for item in items:
                     searched += 1
@@ -533,15 +564,25 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
                     )
                 return None
 
-            opts["item_key"] = found["item_key"]
-            load_opts["item_key"] = found["item_key"]
+            if found is not None:
+                opts["item_key"] = found["item_key"]
+                load_opts["item_key"] = found["item_key"]
 
-            total_count = self.browse_browse(opts)["list"]["count"]
+            result = self.browse_browse(opts)
+            if result is not None:
+                total_count = result["list"]["count"]
+            else:
+                total_count = 0
 
             load_opts["offset"] = 0
-            items = self.browse_load(load_opts)["items"]
+            load_result = self.browse_load(load_opts)
+            if load_result is not None:
+                items = load_result["items"]
+            else:
+                items = []
 
-            if found["hint"] == "action":
+            if found is not None:
+              if found["hint"] == "action":
                 # Loading item we found already started playing
                 return True
 
@@ -559,7 +600,11 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
             opts["item_key"] = items[0]["item_key"]
             load_opts["item_key"] = items[0]["item_key"]
             self.browse_browse(opts)
-            items = self.browse_load(load_opts)["items"]
+            load_result = self.browse_load(load_opts)
+            if load_result is not None:
+                items = load_result["items"]
+            else:
+                items = []
 
         # We should now have play actions (eg Play Now, Add Next, Queue action, Start Radio)
         # So pick the one to use - the default is the first one
@@ -601,7 +646,8 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
         header_result = self.browse_browse(opts)
         # For Radio the above load starts play - so catch this and return
         try:
-            if header_result["list"]["level"] == 0:
+            if header_result is not None:
+              if header_result["list"]["level"] == 0:
                 LOGGER.info("Initial load started playback")
                 return True
         except (NameError, KeyError, TypeError):
@@ -617,47 +663,50 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
 
         result = self.browse_load(opts)
 
-        first_item = result["items"][0]
-        hint = first_item["hint"]
-        if not (hint in ["action", "action_list"]):
-            LOGGER.error(
-                "Playback requested but item is a list, not a playable action or action_list id: %s",
-                media_id,
-            )
-            return False
-
-        if hint == "action_list":
-            opts["item_key"] = first_item["item_key"]
-            result = self.browse_browse(opts)
-            if result is None:
-                LOGGER.error(
-                    "Playback requested of unsupported id: %s",
-                    media_id,
-                )
-                return False
-            result = self.browse_load(opts)
+        if result is not None:
             first_item = result["items"][0]
             hint = first_item["hint"]
+            if not (hint in ["action", "action_list"]):
+                LOGGER.error(
+                "Playback requested but item is a list, not a playable action or action_list id: %s",
+                media_id,
+                )
+                return False
 
-        if hint != "action":
-            LOGGER.error(
+            if hint == "action_list":
+                opts["item_key"] = first_item["item_key"]
+                result = self.browse_browse(opts)
+                if result is None:
+                    LOGGER.error(
+                        "Playback requested of unsupported id: %s",
+                        media_id,
+                    )
+                    return False
+                result = self.browse_load(opts)
+                if result is not None:
+                    first_item = result["items"][0]
+                    hint = first_item["hint"]
+
+            if hint != "action":
+                LOGGER.error(
                 "Playback requested but item does not have a playable action id: %s, %s",
                 media_id,
                 header_result,
-            )
-            return False
+                )
+                return False
 
-        play_action = result["items"][0]
-        hint = play_action["hint"]
-        LOGGER.info("'%s' for '%s')", play_action["title"], header_result)
-        opts["item_key"] = play_action["item_key"]
-        self.browse_browse(opts)
-        if result is None:
-            LOGGER.error(
+            if result is not None:
+                play_action = result["items"][0]
+                hint = play_action["hint"]
+                LOGGER.info("'%s' for '%s')", play_action["title"], header_result)
+                opts["item_key"] = play_action["item_key"]
+                self.browse_browse(opts)
+            else:
+                LOGGER.error(
                 "Playback requested of unsupported id: %s",
                 media_id,
-            )
-            return False
+                )
+                return False
 
         return True
 
@@ -686,10 +735,10 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
         self._token = token
 
         if not appinfo or not isinstance(appinfo, dict):
-            raise "appinfo missing or in incorrect format!"
+            raise ValueError("appinfo missing or in incorrect format!")
 
         if not (host and port):
-            raise "host and port of the roon core must be specified!"
+            raise ValueError("host and port of the roon core must be specified!")
 
         self._server_setup(host, port)
 
@@ -755,7 +804,8 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
             LOGGER.info("The application should be approved within Roon's settings.")
         else:
             LOGGER.debug("Confirming previous registration with Roon...")
-        self._roonsocket.send_request(SERVICE_REGISTRY + "/register", appinfo)
+        if self._roonsocket is not None:
+            self._roonsocket.send_request(SERVICE_REGISTRY + "/register", appinfo)
 
     def _server_registered(self, reginfo):
         LOGGER.debug("Registered to Roon server %s", reginfo["display_name"])
@@ -765,8 +815,9 @@ class RoonApi:  # pylint: disable=too-many-instance-attributes
         self._core_name = reginfo["display_name"]
         # subscribe to state change events
 
-        self._roonsocket.subscribe(SERVICE_TRANSPORT, "zones", self._on_state_change)
-        self._roonsocket.subscribe(SERVICE_TRANSPORT, "outputs", self._on_state_change)
+        if self._roonsocket is not None:
+            self._roonsocket.subscribe(SERVICE_TRANSPORT, "zones", self._on_state_change)
+            self._roonsocket.subscribe(SERVICE_TRANSPORT, "outputs", self._on_state_change)
         # set flag that we're fully initialized (used for blocking init)
         self.ready = True
 
